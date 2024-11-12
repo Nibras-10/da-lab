@@ -1,91 +1,72 @@
-def read_csv_file(filename):
-    data = []
+import csv
+
+# Load dataset from a CSV file
+def load_data(filename):
     with open(filename, 'r') as file:
-        next(file)  # Skip the header row
-        for line in file:
-            row = line.strip().split(',')
-            features = row[1:-1]  # Age, income, student, credit_rating
-            label = row[-1]       # buys_computer
-            data.append((features, label))
+        reader = csv.reader(file)
+        next(reader)  # Skip the header row
+        data = [tuple(row[1:]) for row in reader]  # Skip the RID column
     return data
 
-# Step 2: Calculate Prior Probabilities P(class)
-def calculate_prior_probabilities(data):
-    total_samples = len(data)
-    class_counts = {}
+# Calculate Naive Bayes probabilities
+def calculate_probabilities(data, features):
+    # Count occurrences for each class (buys_computer)
+    buy_computer_yes = sum(1 for row in data if row[4] == 'yes')
+    buy_computer_no = sum(1 for row in data if row[4] == 'no')
+    total = len(data)
 
-    for features, label in data:
-        if label not in class_counts:
-            class_counts[label] = 0
-        class_counts[label] += 1
+    # Handle cases where buy_computer_yes or buy_computer_no is zero
+    if buy_computer_yes == 0 or buy_computer_no == 0:
+        return 0, 0
 
-    priors = {}
-    for label in class_counts:
-        priors[label] = class_counts[label] / total_samples
+    # Calculate Prior Probabilities
+    P_yes = buy_computer_yes / total
+    P_no = buy_computer_no / total
 
-    return priors
+    # Calculate Likelihoods (conditional probabilities) for `buys_computer = yes`
+    P_age_given_yes = sum(1 for row in data if row[0] == features['age'] and row[4] == 'yes') / buy_computer_yes
+    P_income_given_yes = sum(1 for row in data if row[1] == features['income'] and row[4] == 'yes') / buy_computer_yes
+    P_student_given_yes = sum(1 for row in data if row[2] == features['student'] and row[4] == 'yes') / buy_computer_yes
+    P_credit_rating_given_yes = sum(1 for row in data if row[3] == features['credit_rating'] and row[4] == 'yes') / buy_computer_yes
 
-# Step 3: Calculate Likelihood P(feature|class)
-def calculate_likelihoods(data):
-    feature_counts = {}
-    class_counts = {}
+    # Calculate Likelihoods (conditional probabilities) for `buys_computer = no`
+    P_age_given_no = sum(1 for row in data if row[0] == features['age'] and row[4] == 'no') / buy_computer_no
+    P_income_given_no = sum(1 for row in data if row[1] == features['income'] and row[4] == 'no') / buy_computer_no
+    P_student_given_no = sum(1 for row in data if row[2] == features['student'] and row[4] == 'no') / buy_computer_no
+    P_credit_rating_given_no = sum(1 for row in data if row[3] == features['credit_rating'] and row[4] == 'no') / buy_computer_no
 
-    for features, label in data:
-        if label not in class_counts:
-            class_counts[label] = 0
-            feature_counts[label] = [{} for _ in range(len(features))]
-        
-        class_counts[label] += 1
+    # Calculate posterior probabilities
+    P_yes_given_features = P_yes * P_age_given_yes * P_income_given_yes * P_student_given_yes * P_credit_rating_given_yes
+    P_no_given_features = P_no * P_age_given_no * P_income_given_no * P_student_given_no * P_credit_rating_given_no
 
-        for i in range(len(features)):
-            feature_value = features[i]
-            if feature_value not in feature_counts[label][i]:
-                feature_counts[label][i][feature_value] = 0
-            feature_counts[label][i][feature_value] += 1
+    return P_yes_given_features, P_no_given_features
 
-    likelihoods = {}
+# Get user input for features
+def get_user_input():
+    age = input("Enter age (youth/middle_aged/senior): ").strip().lower()
+    income = input("Enter income (high/medium/low): ").strip().lower()
+    student = input("Are they a student? (yes/no): ").strip().lower()
+    credit_rating = input("Enter credit rating (fair/excellent): ").strip().lower()
+    return {'age': age, 'income': income, 'student': student, 'credit_rating': credit_rating}
 
-    for label in feature_counts:
-        likelihoods[label] = []
-        
-        for i in range(len(feature_counts[label])):
-            feature_likelihoods = {}
-            
-            for feature_value in feature_counts[label][i]:
-                feature_likelihoods[feature_value] = feature_counts[label][i][feature_value] / class_counts[label]
-            
-            likelihoods[label].append(feature_likelihoods)
+# Main function to run the Naive Bayes prediction
+def main():
+    filename = 'bayes.csv'  # Assuming data.csv is the file name with the dataset
+    data = load_data(filename)
+    features = get_user_input()
 
-    return likelihoods
+    P_yes_given_features, P_no_given_features = calculate_probabilities(data, features)
 
-# Step 4: Classify new data and print probabilities
-def classify(priors, likelihoods, new_data):
-    posteriors = {}
-    for label in priors:
-        posteriors[label] = priors[label]
-        for i in range(len(new_data)):
-            if new_data[i] in likelihoods[label][i]:
-                posteriors[label] *= likelihoods[label][i][new_data[i]]
-            else:
-                posteriors[label] *= 0
+    # Display results
+    print(f"P(yes | features) = {P_yes_given_features:.5f}")
+    print(f"P(no | features) = {P_no_given_features:.5f}")
 
-    # Print the posterior probabilities for each class
-    for label in posteriors:
-        print(f"Posterior probability for {label}: {posteriors[label]}")
+    # Make prediction
+    if P_yes_given_features > P_no_given_features:
+        print("Predicted: Buys computer = yes")
+    else:
+        print("Predicted: Buys computer = no")
 
-    return max(posteriors, key=posteriors.get)
-
-# Step 5: Running the classifier on new data
-def naive_bayes_classifier(training_data, new_data):
-    priors = calculate_prior_probabilities(training_data)
-    likelihoods = calculate_likelihoods(training_data)
-    return classify(priors, likelihoods, new_data)
-
-# Main execution
-filename = 'bayes.csv'  # Name of your CSV file
-training_data = read_csv_file(filename)
-
-# Classify the new data: X = (age=youth, income=medium, student=yes, credit_rating=fair)
-new_sample = ['youth', 'medium', 'yes', 'fair']
-predicted_class = naive_bayes_classifier(training_data, new_sample)
-print(f'Predicted class for {new_sample}: {predicted_class}')
+# Run the program
+if __name__ == "__main__":
+    main()
