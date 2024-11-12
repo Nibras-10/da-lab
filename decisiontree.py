@@ -1,123 +1,106 @@
+
 import csv
 import math
 
-# Step 1: Read CSV Data
-def read_csv_file(filename):
+# Step 1: Read the CSV Data
+def load_data(filename):
     data = []
     with open(filename, 'r') as file:
-        next(file)  # Skip the header row
-        for line in file:
-            row = line.strip().split(',')
-            features = row[1:-1]  # Age, income, student, credit_rating
-            label = row[-1]       # buys_computer
-            data.append((features, label))
+        reader = csv.DictReader(file)
+        for row in reader:
+            data.append(row)
     return data
 
-# Step 2: Calculate Entropy of a dataset
+# Step 2: Calculate Entropy
 def entropy(data):
-    total_samples = len(data)
-    label_counts = {}
+    total = len(data)
+    if total == 0:
+        return 0
+    count_yes = sum(1 for row in data if row['class_buys_computer'] == 'yes')
+    count_no = total - count_yes
+    p_yes = count_yes / total
+    p_no = count_no / total
+    entropy_yes = -p_yes * math.log2(p_yes) if p_yes > 0 else 0
+    entropy_no = -p_no * math.log2(p_no) if p_no > 0 else 0
+    # print(f"Entropy: {entropy_yes} + {entropy_no}")
+    return entropy_yes + entropy_no
 
-    for features, label in data:
-        if label not in label_counts:
-            label_counts[label] = 0
-        label_counts[label] += 1
+# Step 3: Calculate Information Gain
+def information_gain(data, attribute):
+    total_entropy = entropy(data)
+    values = set(row[attribute] for row in data)
+    weighted_entropy = 0
+    for value in values:
+        subset = [row for row in data if row[attribute] == value]
+        weighted_entropy += (len(subset) / len(data)) * entropy(subset)
+    # print(f"Information Gain for {attribute}: {total_entropy} - {weighted_entropy}")
+    return total_entropy - weighted_entropy
 
-    ent = 0
-    for label in label_counts:
-        prob = label_counts[label] / total_samples
-        ent -= prob * math.log2(prob)
+# Step 4: Split Data
+def split_data(data, attribute, value):
+    return [row for row in data if row[attribute] == value]
 
-    return ent
+# Step 5: Build Decision Tree
+def build_tree(data, attributes):
+    if all(row['class_buys_computer'] == 'yes' for row in data):
+        return 'yes'
+    if all(row['class_buys_computer'] == 'no' for row in data):
+        return 'no'
+    if not attributes:
+        return 'yes' if sum(1 for row in data if row['class_buys_computer'] == 'yes') >= len(data) / 2 else 'no'
+    
+    best_attribute = max(attributes, key=lambda attr: information_gain(data, attr))
+    tree = {best_attribute: {}}
+    values = set(row[best_attribute] for row in data)
+    for value in values:
+        subset = split_data(data, best_attribute, value)
+        subtree = build_tree(subset, [attr for attr in attributes if attr != best_attribute])
+        tree[best_attribute][value] = subtree
+    return tree
 
-# Step 3: Split dataset based on a feature and its value
-def split_data(data, index, value):
-    true_branch = [row for row in data if row[0][index] == value]
-    false_branch = [row for row in data if row[0][index] != value]
-    return true_branch, false_branch
-
-# Step 4: Find the best feature to split on using Information Gain
-def find_best_split(data):
-    best_gain = 0
-    best_index = None
-    best_value = None
-    current_entropy = entropy(data)
-    n_features = len(data[0][0])  # Number of features
-
-    for index in range(n_features):
-        values = set([row[0][index] for row in data])  # Unique values in the column
-        for value in values:
-            true_branch, false_branch = split_data(data, index, value)
-
-            if not true_branch or not false_branch:
-                continue
-
-            # Calculate information gain
-            p = len(true_branch) / len(data)
-            gain = current_entropy - p * entropy(true_branch) - (1 - p) * entropy(false_branch)
-
-            if gain > best_gain:
-                best_gain, best_index, best_value = gain, index, value
-
-    return best_gain, best_index, best_value
-
-# Step 5: Build the Decision Tree recursively
-class DecisionNode:
-    def __init__(self, index=None, value=None, true_branch=None, false_branch=None, prediction=None):
-        self.index = index
-        self.value = value
-        self.true_branch = true_branch
-        self.false_branch = false_branch
-        self.prediction = prediction
-
-def build_tree(data):
-    gain, index, value = find_best_split(data)
-
-    if gain == 0:  # No further gain, return a leaf node
-        return DecisionNode(prediction=data[0][1])
-
-    true_branch, false_branch = split_data(data, index, value)
-    true_node = build_tree(true_branch)
-    false_node = build_tree(false_branch)
-
-    return DecisionNode(index=index, value=value, true_branch=true_node, false_branch=false_node)
-
-# Step 6: Print the Decision Tree
-def print_tree(node, headers, spacing=""):
-    if node.prediction is not None:
-        print(spacing + f"Predict: {node.prediction}")
-        return
-
-    print(f"{spacing}{headers[node.index]} == {node.value}?")
-    print(spacing + '--> True:')
-    print_tree(node.true_branch, headers, spacing + "  ")
-    print(spacing + '--> False:')
-    print_tree(node.false_branch, headers, spacing + "  ")
-
-# Step 7: Classify a new sample using the Decision Tree
-def classify(tree, sample):
-    if tree.prediction is not None:
-        return tree.prediction
-
-    if sample[tree.index] == tree.value:
-        return classify(tree.true_branch, sample)
+# Step 6: Display the Decision Tree
+def display_tree(tree, indent=''):
+    if isinstance(tree, dict):
+        for key, value in tree.items():
+            print(f"{indent}{key}")
+            for sub_key, sub_value in value.items():
+                if isinstance(sub_value, dict):
+                    print(f"{indent}  {sub_key} ->")
+                    display_tree(sub_value, indent + '    ')
+                else:
+                    print(f"{indent}  {sub_key} -> {sub_value}")
     else:
-        return classify(tree.false_branch, sample)
+        if tree == 'yes':
+            print(f"{indent}Predict: Yes")
+        else:
+            print(f"{indent}Predict: No")
 
-# Main execution
+# Step 7: Predict Function
+def predict(tree, instance):
+    if not isinstance(tree, dict):
+        return tree
+    attribute = next(iter(tree))
+    value = instance[attribute]
+    subtree = tree[attribute].get(value, 'no')
+    return predict(subtree, instance)
+
+# Step 8: User Input
+def get_user_input():
+    age = input("Enter age (youth/middle_aged/senior): ")
+    income = input("Enter income (high/medium/low): ")
+    student = input("Are you a student? (yes/no): ")
+    credit_rating = input("Enter credit rating (fair/excellent): ")
+    return {'age': age, 'income': income, 'student': student, 'credit_rating': credit_rating}
+
+# Step 9: Make Prediction
+def main():
+    data = load_data('dtree.csv')
+    attributes = ['age', 'income', 'student', 'credit_rating']
+    tree = build_tree(data, attributes)
+    display_tree(tree)
+    instance = get_user_input()
+    prediction = predict(tree, instance)
+    print(f"Prediction for class_buys_computer: {prediction}")
+
 if __name__ == "__main__":
-    filename = 'bayes.csv'  # Name of your CSV file
-    headers = ['age', 'income', 'student', 'credit_rating']  # Feature names
-    training_data = read_csv_file(filename)
-
-    # Build the decision tree
-    tree = build_tree(training_data)
-
-    # Print the decision tree
-    print("Decision Tree Structure:")
-    print_tree(tree, headers)
-
-    # Classify a new sample: X = (age=youth, income=medium, student=yes, credit_rating=fair)
-    new_sample = ['youth', 'medium', 'yes', 'fair']
-    predicted_class = classify(tree, new_sample)
-    print(f'\nPredicted class for {new_sample}: {predicted_class}')
+    main()
