@@ -1,91 +1,81 @@
-from itertools import chain, combinations
+from itertools import combinations
 
-def load_data(file_path):
-    transactions = []
-    with open(file_path, 'r') as file:
-        next(file)  # Skip the header line
-        for line in file:
-            parts = line.strip().split(',')
-            tid = parts[0]  # Transaction ID
-            items = parts[1:]  # Remaining parts are items
-            transaction = set(items)
-            transactions.append(transaction)
-    return transactions
+min_sup=2
+min_confidence=0.75
 
+transactions=[]
+file_path='transactions2.csv'
+with open(file_path,'r')as file:
+    next(file)
+    for line in file:
+        items = line.strip().split(',')[1:]
+        transactions.append(items)
 
-def get_unique_items(data):
-    unique_items = set()
-    for transaction in data:
-        for item in transaction:
-            unique_items.add(frozenset([item]))
-    return unique_items
-
-def support_count(data, itemset):
-    count = 0
-    for transaction in data:
-        if itemset.issubset(transaction):
-            count += 1
-    return count
-
-def generate_candidate_itemsets(prev_itemsets, k):
-    candidates = set()
-    prev_itemsets_list = list(prev_itemsets)
-    for i in range(len(prev_itemsets_list)):
-        for j in range(i + 1, len(prev_itemsets_list)):
-            union = prev_itemsets_list[i] | prev_itemsets_list[j]
-            if len(union) == k:
-                candidates.add(union)
-    return candidates
-
-def apriori(data, min_support):
-    unique_items = get_unique_items(data)
-    frequent_itemsets = {}
-    k = 1
-    while True:
-        if k == 1:
-            candidate_itemsets = unique_items
+item_counts={}
+for transaction in transactions:
+    for item in transaction:
+        if item in item_counts:
+            item_counts[item]+=1
         else:
-            candidate_itemsets = generate_candidate_itemsets(prev_itemsets, k)
-        prev_itemsets = candidate_itemsets.copy()
-        frequent_itemsets_k = {}
-        for itemset in candidate_itemsets:
-            support = support_count(data, itemset)
-            if support >= min_support:
-                frequent_itemsets_k[itemset] = support
-        if not frequent_itemsets_k:
-            break
-        frequent_itemsets.update(frequent_itemsets_k)
-        k += 1
-    return frequent_itemsets
+            item_counts[item]=1
 
-def powerset(iterable):
-    s = list(iterable)
-    return chain.from_iterable(combinations(s, r) for r in range(1, len(s)))
+for item,count in item_counts.items():
+    if count>=min_sup:
+        print(f'{item}=>{count}')
+print()
 
-def generate_rules(data, frequent_itemset, support, min_confidence):
-    rules = []
-    for antecedent in map(set, powerset(frequent_itemset)):
-        if antecedent and antecedent != frequent_itemset:
-            consequent = frequent_itemset - antecedent
-            if support_count(data, antecedent) > 0:
-                confidence = support / support_count(data, antecedent)
-                if confidence >= min_confidence:
-                    rules.append((antecedent, consequent, confidence))
-    return rules
+pair_counts={}
+for transaction in transactions:
+    pairs=list(combinations(transaction,2))
+    for pair in pairs:
+        pair=tuple(sorted(pair))
+        if pair in pair_counts:
+            pair_counts[pair]+=1
+        else:
+            pair_counts[pair]=1
 
-min_support = 2
-min_confidence = 0.75
-data = load_data("transactions2.csv")
-transactions = data  # Use transactions directly
-frequent_itemsets = apriori(transactions, min_support)
+for pair,count in pair_counts.items():
+    if count>=min_sup:
+        print(f"{{{pair}}}=>{{{count}}}")
 
-print("Frequent Itemsets and their Support Counts:")
-for itemset, support in frequent_itemsets.items():
-    print(f"{set(itemset)}: {support}")
+triple_counts={}
+for transaction in transactions:
+    triples=list(combinations(transaction,3))
+    for triple in triples:
+        triple=tuple(sorted(triple))
+        if triple in triple_counts:
+            triple_counts[triple]+=1
+        else:
+            triple_counts[triple]=1
 
-print("\nAssociation Rules:")
-for itemset, support in frequent_itemsets.items():
-    rules = generate_rules(transactions, itemset, support, min_confidence)
-    for rule in rules:
-        antecedent, consequent, confidence = rule
-        print(f"{set(antecedent)} => {set(consequent)} (Confidence: {confidence:.2f})")
+for i,c in triple_counts.items():
+    if c>=min_sup:
+        print(f"{i}=>{c}")   
+
+for pair,support in pair_counts.items():
+    if support>=min_sup:
+        item1,item2=pair
+
+        conf=support/item_counts[item1]
+        if conf>=min_confidence:
+            print(f"{item1}=>{item2} confidence:{conf:.2f}")
+        
+        conf=support/item_counts[item2]
+        if conf>=min_confidence:
+            print(f"{item2}=>{item1} confidence:{conf:.2f}")
+
+for triple,support in triple_counts.items():
+    if support>=min_sup:
+        for i in range(3):
+            item=list(triple)
+            consequent=item.pop(i)
+            antecedent=tuple(sorted(item))
+
+            if antecedent in pair_counts:
+                conf=support/pair_counts[antecedent]
+                if conf>=min_confidence:
+                    print(f'{{{', '.join(antecedent)}}} => {{{consequent}}} confidence:{conf:.2f}')
+
+            conf2=support/item_counts[consequent]
+            if conf2>=min_confidence:
+                print(f"{{{consequent}}} => {{{', '.join(antecedent)}}} confidence:{conf2:.2f}")
